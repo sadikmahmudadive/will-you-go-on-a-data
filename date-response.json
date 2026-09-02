@@ -8,5 +8,16 @@
     "outfit": "Cute Dress",
     "time": "Romantic Dinner (7:30 PM)",
     "place": "Cozy Italian Bistro"
+  },
+  {
+    "id": 1788388911974,
+    "receivedAt": "2026-09-02T22:41:51.974Z",
+    "date": "2026-09-17",
+    "time": "07:44",
+    "place": "Surprise Me! ✨",
+    "food": "Dessert & Ice Cream Bar 🍨",
+    "outfit": "Fancy & Elegant 💃",
+    "notes": "I get to control the music playlist 🎵",
+    "submittedAt": "2026-09-02T22:41:51.972Z"
   }
 ]

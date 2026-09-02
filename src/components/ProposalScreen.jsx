@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { Heart, Sparkles } from 'lucide-react';
 
 const NO_PHRASES = [
@@ -11,125 +11,163 @@ const NO_PHRASES = [
   "Error 404: 'No' not found 🚫",
   "You know you want to! 🥰",
   "Is that your final answer? 🤨",
-  "Look at the big shiny button! ✨",
+  "Look at the shiny button! ✨",
   "I won't let you say no! 🤭",
   "Just click YES already! 💖",
 ];
 
 export default function ProposalScreen({ onAccept }) {
   const [dodgeCount, setDodgeCount] = useState(0);
-  const [noPosition, setNoPosition] = useState(null); // { x, y } relative to card
+  const [translatePos, setTranslatePos] = useState({ x: 0, y: 0 });
   const [isMoved, setIsMoved] = useState(false);
+
   const cardRef = useRef(null);
   const noBtnRef = useRef(null);
   const yesBtnRef = useRef(null);
+  const lastDodgeTimeRef = useRef(0);
 
-  const triggerDodge = (e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
+  const triggerDodge = useCallback(
+    (cursorClientX, cursorClientY) => {
+      const now = Date.now();
+      // Debounce slightly to prevent erratic re-triggers (120ms)
+      if (now - lastDodgeTimeRef.current < 120) return;
+      lastDodgeTimeRef.current = now;
 
-    const card = cardRef.current;
-    const noBtn = noBtnRef.current;
-    if (!card || !noBtn) return;
+      const card = cardRef.current;
+      const noBtn = noBtnRef.current;
+      if (!card || !noBtn) return;
 
-    const cardRect = card.getBoundingClientRect();
-    const btnRect = noBtn.getBoundingClientRect();
-    const btnWidth = btnRect.width || 120;
-    const btnHeight = btnRect.height || 48;
+      const cardRect = card.getBoundingClientRect();
+      const btnRect = noBtn.getBoundingClientRect();
 
-    // Boundary padding inside the card so it never touches the border
-    const padX = 20;
-    const padY = 20;
-    const minX = padX;
-    const maxX = Math.max(minX, cardRect.width - btnWidth - padX);
-    const minY = padY;
-    const maxY = Math.max(minY, cardRect.height - btnHeight - padY);
+      // Current translation offset
+      const currentX = translatePos.x;
+      const currentY = translatePos.y;
 
-    // YES button bounds relative to card to avoid overlapping
-    let yesLeft = 0, yesTop = 0, yesRight = 0, yesBottom = 0;
-    if (yesBtnRef.current) {
-      const yRect = yesBtnRef.current.getBoundingClientRect();
-      yesLeft = yRect.left - cardRect.left - 15;
-      yesTop = yRect.top - cardRect.top - 15;
-      yesRight = yRect.right - cardRect.left + 15;
-      yesBottom = yRect.bottom - cardRect.top + 15;
-    }
+      // Base un-translated position of the NO button relative to the card
+      const baseLeft = btnRect.left - cardRect.left - currentX;
+      const baseTop = btnRect.top - cardRect.top - currentY;
 
-    // Find a new random position inside the card that doesn't overlap YES button
-    let newX = minX;
-    let newY = minY;
-    let attempts = 0;
-    let found = false;
+      const btnWidth = btnRect.width || 120;
+      const btnHeight = btnRect.height || 48;
 
-    while (attempts < 25 && !found) {
-      attempts++;
-      const candidateX = Math.floor(minX + Math.random() * (maxX - minX));
-      const candidateY = Math.floor(minY + Math.random() * (maxY - minY));
+      // Safe boundaries inside the card (leaving 18px padding from all card edges)
+      const pad = 18;
+      const minTranslateX = -baseLeft + pad;
+      const maxTranslateX = cardRect.width - baseLeft - btnWidth - pad;
+      const minTranslateY = -baseTop + pad;
+      const maxYTranslateY = cardRect.height - baseTop - btnHeight - pad;
 
-      // Check collision with YES button
-      const overlapsYes =
-        candidateX + btnWidth > yesLeft &&
-        candidateX < yesRight &&
-        candidateY + btnHeight > yesTop &&
-        candidateY < yesBottom;
-
-      // Check distance from current position if moved
-      let farEnough = true;
-      if (noPosition) {
-        const dx = candidateX - noPosition.x;
-        const dy = candidateY - noPosition.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 70) farEnough = false;
+      // YES button bounds relative to card to prevent overlapping
+      let yesLeft = 0,
+        yesTop = 0,
+        yesRight = 0,
+        yesBottom = 0;
+      if (yesBtnRef.current) {
+        const yRect = yesBtnRef.current.getBoundingClientRect();
+        yesLeft = yRect.left - cardRect.left;
+        yesTop = yRect.top - cardRect.top;
+        yesRight = yRect.right - cardRect.left;
+        yesBottom = yRect.bottom - cardRect.top;
       }
 
-      if (!overlapsYes && farEnough) {
-        newX = candidateX;
-        newY = candidateY;
+      // Find a safe spot inside the card
+      let chosenX = minTranslateX;
+      let chosenY = minTranslateY;
+      let found = false;
+
+      // Try 35 random points inside the allowed range
+      for (let attempt = 0; attempt < 35; attempt++) {
+        const candX = Math.round(
+          minTranslateX + Math.random() * (maxTranslateX - minTranslateX)
+        );
+        const candY = Math.round(
+          minTranslateY + Math.random() * (maxYTranslateY - minTranslateY)
+        );
+
+        // Calculate candidate's absolute position on the card
+        const candLeft = baseLeft + candX;
+        const candTop = baseTop + candY;
+        const candRight = candLeft + btnWidth;
+        const candBottom = candTop + btnHeight;
+
+        // Check if candidate overlaps YES button (with 20px comfort buffer)
+        const overlapsYes =
+          candLeft < yesRight + 20 &&
+          candRight > yesLeft - 20 &&
+          candTop < yesBottom + 20 &&
+          candBottom > yesTop - 20;
+
+        if (overlapsYes) continue;
+
+        // Check distance from current position so it actually makes a visible jump
+        const jumpDist = Math.hypot(candX - currentX, candY - currentY);
+        if (jumpDist < 70) continue;
+
+        // If cursor coordinates are available, check distance from cursor
+        if (cursorClientX !== undefined && cursorClientY !== undefined) {
+          const candCenterScreenX = cardRect.left + candLeft + btnWidth / 2;
+          const candCenterScreenY = cardRect.top + candTop + btnHeight / 2;
+          const distToCursor = Math.hypot(
+            candCenterScreenX - cursorClientX,
+            candCenterScreenY - cursorClientY
+          );
+          // Don't jump directly under the cursor!
+          if (distToCursor < 90) continue;
+        }
+
+        chosenX = candX;
+        chosenY = candY;
         found = true;
+        break;
       }
-    }
 
-    // Fallback if loop didn't find spot: pick one of four safe corners of the card
-    if (!found) {
-      const corners = [
-        { x: minX, y: minY },
-        { x: maxX, y: minY },
-        { x: minX, y: maxY },
-        { x: maxX, y: maxY },
-      ];
-      const corner = corners[dodgeCount % corners.length];
-      newX = corner.x;
-      newY = corner.y;
-    }
+      // Safe corner fallbacks if random search was exhausted
+      if (!found) {
+        const safeCorners = [
+          { x: minTranslateX + 5, y: minTranslateY + 5 },
+          { x: maxTranslateX - 5, y: minTranslateY + 5 },
+          { x: minTranslateX + 5, y: maxYTranslateY - 5 },
+          { x: maxTranslateX - 5, y: maxYTranslateY - 5 },
+        ];
+        const corner = safeCorners[(dodgeCount + 1) % safeCorners.length];
+        chosenX = corner.x;
+        chosenY = corner.y;
+      }
 
-    setNoPosition({ x: newX, y: newY });
-    setIsMoved(true);
-    setDodgeCount((prev) => prev + 1);
+      setTranslatePos({ x: chosenX, y: chosenY });
+      setIsMoved(true);
+      setDodgeCount((prev) => prev + 1);
+    },
+    [translatePos, dodgeCount]
+  );
+
+  // Proximity detection on the card: if mouse gets within 70px of the button, dodge early!
+  const handleCardMouseMove = (e) => {
+    if (!noBtnRef.current) return;
+    const btnRect = noBtnRef.current.getBoundingClientRect();
+    const btnCenterX = btnRect.left + btnRect.width / 2;
+    const btnCenterY = btnRect.top + btnRect.height / 2;
+
+    const dist = Math.hypot(e.clientX - btnCenterX, e.clientY - btnCenterY);
+    if (dist < 75) {
+      triggerDodge(e.clientX, e.clientY);
+    }
   };
 
-  // Keep button safely inside card on window resize
-  useEffect(() => {
-    const handleResize = () => {
-      if (isMoved && noPosition && cardRef.current && noBtnRef.current) {
-        const cardRect = cardRef.current.getBoundingClientRect();
-        const btnWidth = noBtnRef.current.offsetWidth || 120;
-        const btnHeight = noBtnRef.current.offsetHeight || 48;
-        const padX = 20;
-        const padY = 20;
-        const maxX = Math.max(padX, cardRect.width - btnWidth - padX);
-        const maxY = Math.max(padY, cardRect.height - btnHeight - padY);
+  const handleTouchCard = (e) => {
+    if (!e.touches || !e.touches[0] || !noBtnRef.current) return;
+    const touch = e.touches[0];
+    const btnRect = noBtnRef.current.getBoundingClientRect();
+    const btnCenterX = btnRect.left + btnRect.width / 2;
+    const btnCenterY = btnRect.top + btnRect.height / 2;
 
-        setNoPosition((pos) => ({
-          x: Math.min(Math.max(padX, pos.x), maxX),
-          y: Math.min(Math.max(padY, pos.y), maxY),
-        }));
-      }
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [isMoved, noPosition]);
+    const dist = Math.hypot(touch.clientX - btnCenterX, touch.clientY - btnCenterY);
+    if (dist < 90) {
+      e.preventDefault();
+      triggerDodge(touch.clientX, touch.clientY);
+    }
+  };
 
   const currentPhrase = NO_PHRASES[dodgeCount % NO_PHRASES.length];
   const yesScale = Math.min(1 + dodgeCount * 0.07, 1.45);
@@ -139,10 +177,12 @@ export default function ProposalScreen({ onAccept }) {
       {/* Main Proposal Canvas / Card */}
       <div
         ref={cardRef}
+        onMouseMove={handleCardMouseMove}
+        onTouchMove={handleTouchCard}
         className="glass-card max-w-lg w-full p-8 md:p-12 rounded-3xl relative overflow-hidden transition-all duration-300 shadow-2xl"
         style={{ minHeight: '480px' }}
       >
-        {/* Cute floating top heart badge */}
+        {/* Top envelope badge */}
         <div className="w-20 h-20 md:w-24 md:h-24 mx-auto mb-6 bg-gradient-to-tr from-rose-400 to-pink-300 rounded-full flex items-center justify-center shadow-lg shadow-rose-300/50 animate-bounce">
           <span className="text-4xl md:text-5xl select-none">💌</span>
         </div>
@@ -165,7 +205,7 @@ export default function ProposalScreen({ onAccept }) {
         </p>
 
         {/* Buttons container */}
-        <div className="relative min-h-[80px] flex items-center justify-center gap-6 flex-wrap">
+        <div className="relative min-h-[90px] flex items-center justify-center gap-6 flex-wrap">
           {/* YES Button */}
           <button
             ref={yesBtnRef}
@@ -181,32 +221,33 @@ export default function ProposalScreen({ onAccept }) {
             </span>
           </button>
 
-          {/* Spacer if button has moved, to keep YES centered */}
-          {isMoved && <div className="hidden" />}
-
-          {/* NO Button (Trick Runaway Button - Always stays ON THE CANVAS) */}
+          {/* NO Button (Guaranteed to remain on the canvas, but completely untouchable) */}
           <button
             ref={noBtnRef}
-            onMouseEnter={triggerDodge}
-            onMouseMove={triggerDodge}
-            onTouchStart={triggerDodge}
-            onPointerDown={triggerDodge}
-            onClick={triggerDodge}
-            style={
-              isMoved && noPosition
-                ? {
-                    position: 'absolute',
-                    left: `${noPosition.x}px`,
-                    top: `${noPosition.y}px`,
-                    zIndex: 30,
-                    transition: 'left 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), top 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)',
-                  }
-                : {
-                    position: 'relative',
-                    zIndex: 10,
-                  }
-            }
-            className="inline-flex items-center justify-center px-6 py-3.5 text-base md:text-lg font-medium text-gray-500 bg-white/95 border border-rose-200 rounded-full shadow-md hover:bg-rose-50 transition-all select-none cursor-pointer whitespace-nowrap"
+            onMouseEnter={(e) => triggerDodge(e.clientX, e.clientY)}
+            onMouseMove={(e) => triggerDodge(e.clientX, e.clientY)}
+            onTouchStart={(e) => {
+              e.preventDefault();
+              const t = e.touches[0];
+              triggerDodge(t?.clientX, t?.clientY);
+            }}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              triggerDodge(e.clientX, e.clientY);
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              triggerDodge(e.clientX, e.clientY);
+            }}
+            style={{
+              transform: `translate3d(${translatePos.x}px, ${translatePos.y}px, 0)`,
+              transition: isMoved
+                ? 'transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)'
+                : 'none',
+              zIndex: 30,
+              willChange: 'transform',
+            }}
+            className="inline-flex items-center justify-center px-6 py-3.5 text-base md:text-lg font-medium text-gray-500 bg-white/95 border border-rose-200 rounded-full shadow-md hover:bg-rose-50 select-none cursor-pointer whitespace-nowrap"
           >
             <span>{currentPhrase}</span>
           </button>
