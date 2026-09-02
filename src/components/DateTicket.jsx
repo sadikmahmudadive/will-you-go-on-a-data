@@ -13,7 +13,9 @@ import {
   Sparkles,
   RefreshCw,
   Heart,
+  Send,
 } from 'lucide-react';
+import { CONFIG } from '../config';
 
 export default function DateTicket({ data, onReset }) {
   const [copied, setCopied] = useState(false);
@@ -46,16 +48,28 @@ export default function DateTicket({ data, onReset }) {
     frame();
   }, []);
 
-  // Format date summary for clipboard
-  const summaryText = `💖 OUR OFFICIAL DATE PLAN 💖
-----------------------------------
+  // Format date summary text for WhatsApp & Clipboard
+  const summaryText = `💖 I SAID YES! Here is our official date plan:
+━━━━━━━━━━━━━━━━━━━━
 📅 Date: ${data.date || 'To be decided'}
 ⏰ Time: ${data.time || 'To be decided'}
 📍 Place: ${data.place || 'To be decided'}
 🍕 Food: ${data.food || 'To be decided'}
 👗 Outfit: ${data.outfit || 'To be decided'}
-${data.notes ? `💌 Special Note: ${data.notes}\n` : ''}----------------------------------
+${data.notes ? `💌 Special Note: ${data.notes}\n` : ''}━━━━━━━━━━━━━━━━━━━━
 Can't wait! 🥰`;
+
+  const handleSendWhatsApp = () => {
+    const cleanNumber = CONFIG.whatsappNumber
+      ? CONFIG.whatsappNumber.replace(/[^0-9]/g, '')
+      : '';
+
+    const url = cleanNumber
+      ? `https://wa.me/${cleanNumber}?text=${encodeURIComponent(summaryText)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(summaryText)}`;
+
+    window.open(url, '_blank');
+  };
 
   const handleCopy = () => {
     navigator.clipboard.writeText(summaryText);
@@ -155,29 +169,41 @@ Can't wait! 🥰`;
           </div>
         </div>
 
-        {/* Buttons */}
-        <div className="flex flex-col sm:flex-row gap-3">
+        {/* Action Buttons */}
+        <div className="flex flex-col gap-3">
+          {/* PRIMARY: WhatsApp 1-Tap Send */}
           <button
-            onClick={handleCopy}
-            className="flex-1 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-bold text-sm bg-rose-500 hover:bg-rose-600 text-white shadow-md shadow-rose-300 transition cursor-pointer"
+            onClick={handleSendWhatsApp}
+            className="w-full inline-flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-2xl font-bold text-base bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white shadow-lg shadow-emerald-500/25 hover:shadow-xl hover:shadow-emerald-500/35 transition-all duration-200 cursor-pointer active:scale-98"
           >
-            {copied ? (
-              <>
-                <Check className="w-4 h-4" /> Copied to Clipboard!
-              </>
-            ) : (
-              <>
-                <Copy className="w-4 h-4" /> Copy Date Plan
-              </>
-            )}
+            <Send className="w-5 h-5" />
+            <span>Send Plan on WhatsApp 💬</span>
           </button>
 
-          <button
-            onClick={handleDownloadJSON}
-            className="flex-1 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-bold text-sm bg-white hover:bg-rose-50 border border-rose-200 text-rose-600 shadow-sm transition cursor-pointer"
-          >
-            <Download className="w-4 h-4" /> Download JSON
-          </button>
+          {/* SECONDARY: Copy & Download in a row */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button
+              onClick={handleCopy}
+              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm bg-rose-500 hover:bg-rose-600 text-white shadow-sm shadow-rose-300 transition cursor-pointer"
+            >
+              {copied ? (
+                <>
+                  <Check className="w-4 h-4" /> Copied to Clipboard!
+                </>
+              ) : (
+                <>
+                  <Copy className="w-4 h-4" /> Copy Date Plan
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={handleDownloadJSON}
+              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm bg-white hover:bg-rose-50 border border-rose-200 text-rose-600 shadow-xs transition cursor-pointer"
+            >
+              <Download className="w-4 h-4" /> Download JSON
+            </button>
+          </div>
         </div>
 
         {/* Start over option */}
@@ -193,4 +219,3 @@ Can't wait! 🥰`;
     </div>
   );
 }
-
